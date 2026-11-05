@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#050608">
+<title>ECHO</title>
+<style>
+:root{color-scheme:dark;--bg:#050608;--panel:#11151b;--line:#252c36;--cyan:#7df9ff;--pink:#ff75c3;--gold:#ffd76a}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:#f5f7fb;font-family:system-ui,-apple-system,Arial,sans-serif;touch-action:none}
+canvas{display:block;width:100vw;height:100vh;background:radial-gradient(ellipse at center,#101722 0,#050608 65%)}
+.hud{position:fixed;top:env(safe-area-inset-top,10px);left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;pointer-events:none}
+.pill{background:#111a;border:1px solid var(--line);border-radius:14px;padding:8px 12px;font-size:13px;backdrop-filter:blur(8px)}
+.hud button,.menu button,.shop button{pointer-events:auto;border:1px solid #303a48;background:#151c26;color:#fff;border-radius:12px;padding:10px 14px;font-weight:700}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#030509c9;padding:22px}
+.panel{width:min(420px,100%);max-height:90vh;overflow:auto;background:linear-gradient(160deg,#151d28,#090d13);border:1px solid #303b49;border-radius:24px;padding:24px;box-shadow:0 20px 70px #000b}
+h1{font-size:42px;letter-spacing:10px;margin:0 0 5px;text-align:center;color:#f8fbff}h2{margin:0 0 12px}
+.sub{text-align:center;color:#8e9aaa;margin:0 0 20px;font-size:13px}
+.menu{display:grid;gap:10px}.menu button,.shop button{width:100%;font-size:15px;padding:13px}
+.primary{background:#d9fbff!important;color:#071014!important;border-color:#d9fbff!important}
+.small{font-size:12px;color:#9aa7b7;line-height:1.5}.row{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:12px 0}
+#joystick{position:fixed;left:24px;bottom:calc(25px + env(safe-area-inset-bottom));width:120px;height:120px;border:1px solid #64708077;border-radius:50%;background:#aab8c311;display:none;touch-action:none}
+#stick{position:absolute;width:48px;height:48px;left:35px;top:35px;border-radius:50%;background:#d9fbff88;border:1px solid #d9fbff}
+#pause{position:fixed;right:16px;bottom:calc(35px + env(safe-area-inset-bottom));display:none}
+#toast{position:fixed;left:50%;bottom:18%;transform:translateX(-50%);padding:10px 14px;border-radius:12px;background:#17212d;border:1px solid #405064;display:none}
+input{width:100%;padding:12px;border-radius:10px;background:#080c12;border:1px solid #344152;color:white;margin:6px 0}
+a{color:var(--cyan)}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud"><div class="pill">SCORE <b id="score">0</b> · PIÈCES <b id="coins">0</b></div><button id="pauseBtn">Ⅱ</button></div>
+<div id="joystick"><div id="stick"></div></div><button id="pause">PAUSE</button>
+<div id="toast"></div>
+<div id="overlay"><div class="panel" id="panel"></div></div>
+<script>
+(()=> {
+"use strict";
+const $=id=>document.getElementById(id), canvas=$("game"),ctx=canvas.getContext("2d");
+let W=innerWidth,H=innerHeight,dpr=Math.min(devicePixelRatio||1,2);
+function resize(){W=innerWidth;H=innerHeight;canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener("resize",resize);resize();
+const KEY="echo_save_v1";
+let save={coins:0,best:0,skin:0,bonusUsed:false,sound:true};
+try{save={...save,...JSON.parse(localStorage.getItem(KEY)||"{}")}}catch{}
+function persist(){localStorage.setItem(KEY,JSON.stringify(save));$("coins").textContent=save.coins}
+let state="menu",score=0,level=1,player={x:W/2,y:H/2,vx:0,vy:0,r:9},aim={x:0,y:0},orbs=[],walls=[],hazards=[],shield=0,life=1,frame=0,spawn=0;
+const skins=["#eafcff","#ff8bd1","#ffd76a","#a6ff9b"];
+function toast(t){$("toast").textContent=t;$("toast").style.display="block";setTimeout(()=>$("toast").style.display="none",1700)}
+function panel(title,body){$("overlay").style.display="flex";$("panel").innerHTML=`<h1>ECHO</h1><div class="sub">${title}</div>${body}`}
+function hidePanel(){$("overlay").style.display="none"}
+function mainMenu(){state="menu";$("joystick").style.display="none";$("pause").style.display="none";panel("SURVIVE THE MIRROR",`<div class="menu"><button class="primary" id="play">JOUER</button><button id="shopBtn">BOUTIQUE</button><button id="skinsBtn">SKINS</button><button id="settingsBtn">PARAMÈTRES</button></div><p class="small" style="text-align:center;margin-top:16px">Meilleur score : ${save.best} · Pièces : ${save.coins}</p>`);$("play").onclick=startGame;$("shopBtn").onclick=shop;$("skinsBtn").onclick=skinsMenu;$("settingsBtn").onclick=settings}
+function shop(){panel("BOUTIQUE",`<div class="row"><span>500 pièces</span><b>1,50 €</b></div><button id="buy500">ACHETER AVEC PAYPAL</button><div class="row"><span>10 000 pièces</span><b>10,00 €</b></div><button id="buy10k">ACHETER AVEC PAYPAL</button><div class="row"><span>Revivre</span><b>0,80 €</b></div><button id="revive">REVIVRE AVEC PAYPAL</button><p class="small">Les paiements réels nécessitent un serveur configuré par un adulte responsable. Sans serveur, les boutons restent désactivés.</p><button id="back">RETOUR</button>`);["buy500","buy10k","revive"].forEach(id=>$(id).onclick=()=>toast("Paiement indisponible : serveur PayPal non configuré."));$("back").onclick=mainMenu}
+function skinsMenu(){panel("SKINS",`<p class="small">Choisis une couleur pour ton joueur.</p><div class="menu">${skins.map((c,i)=>`<button data-s="${i}">● Skin ${i+1} ${i===save.skin?"✓":""}</button>`).join("")}<button id="back">RETOUR</button></div>`);document.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{save.skin=+b.dataset.s;persist();skinsMenu()});$("back").onclick=mainMenu}
+function settings(){panel("PARAMÈTRES",`<div class="row"><span>Effets sonores</span><button id="sound">${save.sound?"ACTIVÉS":"DÉSACTIVÉS"}</button></div><button id="back">RETOUR</button>`);$("sound").onclick=()=>{save.sound=!save.sound;settings()};$("back").onclick=mainMenu}
+function startGame(){score=0;level=1;life=1;shield=0;player={x:W/2,y:H*.72,vx:0,vy:0,r:9};aim={x:0,y:0};orbs=[];hazards=[];walls=[{x:W*.22,y:H*.37,w:W*.18,h:12},{x:W*.62,y:H*.54,w:W*.18,h:12},{x:W*.43,y:H*.20,w:W*.14,h:12}];spawnOrb();state="play";hidePanel();$("joystick").style.display="block";$("pause").style.display="block";$("score").textContent=0;persist()}
+function spawnOrb(){orbs.push({x:30+Math.random()*(W-60),y:100+Math.random()*(H-180),r:7,type:Math.random()<.13?"shield":"coin"})}
+function pause(){if(state!=="play")return;state="pause";panel("PAUSE",`<div class="menu"><button class="primary" id="resume">REPRENDRE</button><button id="restart">RECOMMENCER</button><button id="leader">MEILLEUR SCORE : ${save.best}</button><button id="home">MENU</button></div>`);$("resume").onclick=()=>{state="play";hidePanel()};$("restart").onclick=startGame;$("leader").onclick=()=>toast("Meilleur score : "+save.best);$("home").onclick=mainMenu}
+$("pauseBtn").onclick=pause;$("pause").onclick=pause;
+function gameOver(){state="over";save.best=Math.max(save.best,score);persist();$("joystick").style.display="none";$("pause").style.display="none";panel("PARTIE TERMINÉE",`<p style="text-align:center">Score : <b>${score}</b><br>Meilleur : <b>${save.best}</b></p><div class="menu"><button class="primary" id="again">REJOUER</button><button id="home">MENU</button></div>`);$("again").onclick=startGame;$("home").onclick=mainMenu}
+let joy={active:false,id:null,cx:0,cy:0};
+const joyEl=$("joystick"),stick=$("stick");
+function joyStart(e){e.preventDefault();const r=joyEl.getBoundingClientRect();joy.active=true;joy.id=e.pointerId;joy.cx=r.left+r.width/2;joy.cy=r.top+r.height/2;joyMove(e);joyEl.setPointerCapture(e.pointerId)}
+function joyMove(e){if(!joy.active||e.pointerId!==joy.id)return;let dx=e.clientX-joy.cx,dy=e.clientY-joy.cy,m=Math.hypot(dx,dy),max=42;if(m>max){dx=dx/m*max;dy=dy/m*max}aim.x=dx/max;aim.y=dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`}
+function joyEnd(e){if(e.pointerId!==joy.id)return;joy.active=false;aim={x:0,y:0};stick.style.transform="translate(0,0)"}
+joyEl.addEventListener("pointerdown",joyStart);joyEl.addEventListener("pointermove",joyMove);joyEl.addEventListener("pointerup",joyEnd);joyEl.addEventListener("pointercancel",joyEnd);
+function circle(x,y,r,c){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=c;ctx.fill()}
+function rectHit(x,y,r,w){return x+r>w.x&&x-r<w.x+w.w&&y+r>w.y&&y-r<w.y+w.h}
+function update(){if(state!=="play")return;frame++;player.vx=aim.x*3.5;player.vy=aim.y*3.5;let nx=player.x+player.vx,ny=player.y+player.vy;nx=Math.max(player.r,Math.min(W-player.r,nx));ny=Math.max(75,Math.min(H-player.r,ny));let blocked=walls.some(w=>rectHit(nx,ny,player.r,w));if(!blocked){player.x=nx;player.y=ny}
+if(frame%100===0){hazards.push({x:Math.random()*W,y:80,vx:(player.x-Math.random()*W)*.002,vy:1.4+Math.random()*.7,r:4})}
+hazards.forEach(h=>{h.y+=h.vy;h.x+=h.vx});hazards=hazards.filter(h=>h.y<H+20);
+for(let i=orbs.length-1;i>=0;i--){let o=orbs[i];if(Math.hypot(player.x-o.x,player.y-o.y)<player.r+o.r+3){if(o.type==="coin"){score+=10;save.coins++}else shield=600;orbs.splice(i,1);spawnOrb()}}
+for(const h of hazards){if(Math.hypot(player.x-h.x,player.y-h.y)<player.r+h.r){if(shield>0){shield=0;h.y=H+100}else{gameOver();return}}}
+if(shield>0)shield--;if(score>=level*100){level++;toast("Niveau "+level)}
+$("score").textContent=score;persist()}
+function draw(){ctx.clearRect(0,0,W,H);ctx.save();ctx.strokeStyle="#1c2936";ctx.lineWidth=1;for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}ctx.restore();
+walls.forEach(w=>{ctx.fillStyle="#293442";ctx.strokeStyle="#647386";ctx.fillRect(w.x,w.y,w.w,w.h);ctx.strokeRect(w.x,w.y,w.w,w.h)});
+orbs.forEach(o=>{circle(o.x,o.y,o.r,o.type==="coin"?"#ffd76a":"#7df9ff");ctx.beginPath();ctx.arc(o.x,o.y,o.r+4,0,7);ctx.strokeStyle=o.type==="coin"?"#ffd76a55":"#7df9ff55";ctx.stroke()});
+hazards.forEach(h=>circle(h.x,h.y,h.r,"#ff658d"));
+if(state==="play"||state==="pause"){let c=skins[save.skin];circle(player.x,player.y,player.r+5,c+"33");circle(player.x,player.y,player.r,c);if(shield>0){ctx.beginPath();ctx.arc(player.x,player.y,player.r+9,0,7);ctx.strokeStyle="#7df9ff";ctx.lineWidth=2;ctx.stroke()}
+/* mirrored echo trail */circle(W-player.x,H-player.y,player.r,c+"99");ctx.beginPath();ctx.moveTo(player.x,player.y);ctx.lineTo(W-player.x,H-player.y);ctx.strokeStyle="#7df9ff22";ctx.stroke()}
+requestAnimationFrame(()=>{update();draw()})}
+persist();mainMenu();draw();
+})();
+</script>
+</body></html>
